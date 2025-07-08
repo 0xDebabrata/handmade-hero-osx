@@ -1,6 +1,15 @@
 #include <AppKit/AppKit.h>
 #include <stdio.h>
 
+@interface WindowDelegate : NSObject <NSWindowDelegate>
+@end
+
+@implementation WindowDelegate
+- (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
+  return frameSize;
+}
+@end
+
 int main(int argc, const char *argv[]) {
   NSApplication *app = [NSApplication sharedApplication];
   NSWindow *window = [[NSWindow alloc]
@@ -8,11 +17,13 @@ int main(int argc, const char *argv[]) {
                 styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                            NSWindowStyleMaskMiniaturizable |
                            NSWindowStyleMaskResizable |
-                           NSWindowStyleMaskFullScreen |
                            NSWindowStyleMaskFullSizeContentView)
                   backing:NSBackingStoreBuffered
                     defer:NO];
 
+  WindowDelegate *delegate = [[WindowDelegate alloc] init];
+
+  [window setDelegate:delegate];
   [window setBackgroundColor:NSColor.purpleColor];
   [window setTitle:@"Handmade Hero"];
   [window makeKeyAndOrderFront:nil];
