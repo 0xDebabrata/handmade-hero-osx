@@ -1,10 +1,22 @@
 #include <AppKit/AppKit.h>
 #include <stdio.h>
 
-@interface WindowDelegate : NSObject <NSWindowDelegate>
+@interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 @end
 
-@implementation WindowDelegate
+@implementation AppDelegate
+/* NSApplicationDelegate protocols */
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:
+    (NSApplication *)sender {
+  return YES;
+}
+
+- (NSApplicationTerminateReply)applicationShouldTerminate:
+    (NSApplication *)sender {
+  return NSTerminateNow;
+}
+
+/* NSWindowDelegate protocols */
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
   return frameSize;
 }
@@ -12,6 +24,9 @@
 
 int main(int argc, const char *argv[]) {
   NSApplication *app = [NSApplication sharedApplication];
+  AppDelegate *delegate = [[AppDelegate alloc] init];
+
+  [app setDelegate:delegate];
   NSWindow *window = [[NSWindow alloc]
       initWithContentRect:NSMakeRect(0, 0, 1280, 720)
                 styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
@@ -21,14 +36,11 @@ int main(int argc, const char *argv[]) {
                   backing:NSBackingStoreBuffered
                     defer:NO];
 
-  WindowDelegate *delegate = [[WindowDelegate alloc] init];
-
   [window setDelegate:delegate];
   [window setBackgroundColor:NSColor.purpleColor];
   [window setTitle:@"Handmade Hero"];
   [window makeKeyAndOrderFront:nil];
 
   [app run];
-  printf("handmade hero");
   return 0;
 }
