@@ -63,7 +63,7 @@ int main(int argc, const char *argv[]) {
                       hasAlpha:true
                       isPlanar:false
                 colorSpaceName:NSDeviceRGBColorSpace
-                   bytesPerRow:pitch
+                   bytesPerRow:bytesPerPixel * width
                   bitsPerPixel:bytesPerPixel * 8] autorelease];
 
   [app run];
