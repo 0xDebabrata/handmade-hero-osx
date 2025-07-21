@@ -6,9 +6,7 @@
 @interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 @end
 
-int
-
-    @implementation AppDelegate
+@implementation AppDelegate
 /* NSApplicationDelegate protocols */
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:
     (NSApplication *)sender {
@@ -47,12 +45,20 @@ int main(int argc, const char *argv[]) {
   [window setTitle:@"Handmade Hero"];
   [window makeKeyAndOrderFront:nil];
 
-  int bitmapHeight = 3;
   int width = window.contentView.bounds.size.width;
   int height = window.contentView.bounds.size.height;
-  int pitch = width * height;
   int bytesPerPixel = 4;
-  uint8_t *buffer = (uint8_t *)malloc(pitch * bitmapHeight);
+  // Use vm_allocate to allocate large chunks of memory instead of malloc.
+  // Allocated memory is 0 filled.
+  vm_address_t buffer_vm_address;
+  kern_return_t err = vm_allocate(
+      (vm_map_t)mach_task_self(), &buffer_vm_address,
+      (vm_size_t)(width * height * bytesPerPixel), VM_FLAGS_ANYWHERE);
+  if (err != KERN_SUCCESS) {
+    NSLog(
+        @"Encountered an error trying to allocate virtual memory for buffer.");
+  }
+  uint8_t *buffer = (uint8_t *)buffer_vm_address;
 
   NSBitmapImageRep *img = [[[NSBitmapImageRep alloc]
       initWithBitmapDataPlanes:&buffer
