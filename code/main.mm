@@ -1,7 +1,15 @@
 #include <AppKit/AppKit.h>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <stdio.h>
+
+#define internal static
+#define local_persist static
+#define global_variable static
+
+global_variable uint8_t *bitmapMemory;
+global_variable int bytesPerPixel = 4;
 
 @interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 @end
@@ -20,8 +28,40 @@
 
 /* NSWindowDelegate protocols */
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
+  int initialWidth = sender.contentView.bounds.size.width;
+  int initialHeight = sender.contentView.bounds.size.height;
+  if (bitmapMemory) {
+    vm_address_t *buffer_vm_address = (vm_address_t *)&bitmapMemory;
+    vm_deallocate((vm_map_t)mach_task_self(), *buffer_vm_address,
+                  (vm_size_t)(initialWidth * initialHeight * bytesPerPixel));
+  }
   int width = frameSize.width;
   int height = frameSize.height;
+  int bytesPerPixel = 4;
+  // Use vm_allocate to allocate large chunks of memory instead of malloc.
+  // Allocated memory is 0 filled.
+  vm_address_t buffer_vm_address;
+  kern_return_t err = vm_allocate(
+      (vm_map_t)mach_task_self(), &buffer_vm_address,
+      (vm_size_t)(width * height * bytesPerPixel), VM_FLAGS_ANYWHERE);
+  if (err != KERN_SUCCESS) {
+    NSLog(
+        @"Encountered an error trying to allocate virtual memory for buffer.");
+  }
+  bitmapMemory = (uint8_t *)buffer_vm_address;
+
+  NSBitmapImageRep *img = [[[NSBitmapImageRep alloc]
+      initWithBitmapDataPlanes:&bitmapMemory
+                    pixelsWide:width
+                    pixelsHigh:height
+                 bitsPerSample:8
+               samplesPerPixel:4
+                      hasAlpha:true
+                      isPlanar:false
+                colorSpaceName:NSDeviceRGBColorSpace
+                   bytesPerRow:bytesPerPixel * width
+                  bitsPerPixel:bytesPerPixel * 8] autorelease];
+
   return frameSize;
 }
 @end
@@ -44,33 +84,6 @@ int main(int argc, const char *argv[]) {
   [window setBackgroundColor:NSColor.purpleColor];
   [window setTitle:@"Handmade Hero"];
   [window makeKeyAndOrderFront:nil];
-
-  int width = window.contentView.bounds.size.width;
-  int height = window.contentView.bounds.size.height;
-  int bytesPerPixel = 4;
-  // Use vm_allocate to allocate large chunks of memory instead of malloc.
-  // Allocated memory is 0 filled.
-  vm_address_t buffer_vm_address;
-  kern_return_t err = vm_allocate(
-      (vm_map_t)mach_task_self(), &buffer_vm_address,
-      (vm_size_t)(width * height * bytesPerPixel), VM_FLAGS_ANYWHERE);
-  if (err != KERN_SUCCESS) {
-    NSLog(
-        @"Encountered an error trying to allocate virtual memory for buffer.");
-  }
-  uint8_t *buffer = (uint8_t *)buffer_vm_address;
-
-  NSBitmapImageRep *img = [[[NSBitmapImageRep alloc]
-      initWithBitmapDataPlanes:&buffer
-                    pixelsWide:width
-                    pixelsHigh:height
-                 bitsPerSample:8
-               samplesPerPixel:4
-                      hasAlpha:true
-                      isPlanar:false
-                colorSpaceName:NSDeviceRGBColorSpace
-                   bytesPerRow:bytesPerPixel * width
-                  bitsPerPixel:bytesPerPixel * 8] autorelease];
 
   [app run];
   return 0;
