@@ -2,6 +2,7 @@
 #include <Foundation/Foundation.h>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <stdio.h>
 
@@ -19,17 +20,14 @@ void renderWeirdGradient(int xOffset, int yOffset) {
   int pitch = bitmapWidth * bytesPerPixel;
   uint8_t *row = bitmapMemory;
   for (int y = 0; y < bitmapHeight; y++) {
-    uint8_t *pixel = (uint8_t *)row;
+    uint32_t *pixel = (uint32_t *)row;
     for (int x = 0; x < bitmapWidth; x++) {
       // write pixel data
-      *pixel = 0; // red
-      pixel++;
-      *pixel = (uint8_t)y; // green
-      pixel++;
-      *pixel = (uint8_t)(x + xOffset); // blue
-      pixel++;
-      *pixel = 255; // alpha channel
-      pixel++;
+      uint8_t red = 0;
+      uint8_t blue = (uint8_t)(x + xOffset);
+      uint8_t green = (uint8_t)(y + yOffset);
+      uint8_t alpha = 255;
+      *pixel++ = (alpha << 24) | (blue << 16) | (green << 8) | red;
     }
     row += pitch;
   }
