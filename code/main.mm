@@ -34,20 +34,22 @@ void renderWeirdGradient(int xOffset, int yOffset) {
 }
 
 void redrawBuffer(NSWindow *window) {
-  NSBitmapImageRep *img = [[[NSBitmapImageRep alloc]
-      initWithBitmapDataPlanes:&bitmapMemory
-                    pixelsWide:bitmapWidth
-                    pixelsHigh:bitmapHeight
-                 bitsPerSample:8
-               samplesPerPixel:4
-                      hasAlpha:true
-                      isPlanar:false
-                colorSpaceName:NSDeviceRGBColorSpace
-                   bytesPerRow:bytesPerPixel * bitmapWidth
-                  bitsPerPixel:bytesPerPixel * 8] autorelease];
-  NSImage *display =
-      [[[NSImage alloc] initWithData:[img TIFFRepresentation]] autorelease];
-  window.contentView.layer.contents = display;
+  @autoreleasepool {
+    NSBitmapImageRep *img = [[[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:&bitmapMemory
+                      pixelsWide:bitmapWidth
+                      pixelsHigh:bitmapHeight
+                   bitsPerSample:8
+                 samplesPerPixel:4
+                        hasAlpha:true
+                        isPlanar:false
+                  colorSpaceName:NSDeviceRGBColorSpace
+                     bytesPerRow:bytesPerPixel * bitmapWidth
+                    bitsPerPixel:bytesPerPixel * 8] autorelease];
+    NSImage *display =
+        [[[NSImage alloc] initWithData:[img TIFFRepresentation]] autorelease];
+    window.contentView.layer.contents = display;
+  }
 }
 
 @interface WindowDelegate : NSObject <NSWindowDelegate>
@@ -84,7 +86,6 @@ void allocateBuffer(NSWindow *window, NSSize frameSize) {
   running = false;
 }
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
-
   // fill bitmap with content
   allocateBuffer(sender, frameSize);
   renderWeirdGradient(0, 0);
