@@ -50,6 +50,25 @@ global_variable int bytesPerPixel = 4;
   }
   bitmapMemory = (uint8_t *)buffer_vm_address;
 
+  // fill bitmap with content
+  int pitch = width * bytesPerPixel;
+  uint8_t *row = bitmapMemory;
+  for (int y = 0; y < height; y++) {
+    uint8_t *pixel = (uint8_t *)row;
+    for (int x = 0; x < width; x++) {
+      // write pixel data
+      *pixel = 0; // red
+      pixel++;
+      *pixel = (uint8_t)y; // green
+      pixel++;
+      *pixel = (uint8_t)x; // blue
+      pixel++;
+      *pixel = 255; // alpha channel
+      pixel++;
+    }
+    row += pitch;
+  }
+
   NSBitmapImageRep *img = [[[NSBitmapImageRep alloc]
       initWithBitmapDataPlanes:&bitmapMemory
                     pixelsWide:width
@@ -61,6 +80,9 @@ global_variable int bytesPerPixel = 4;
                 colorSpaceName:NSDeviceRGBColorSpace
                    bytesPerRow:bytesPerPixel * width
                   bitsPerPixel:bytesPerPixel * 8] autorelease];
+  NSImage *display =
+      [[[NSImage alloc] initWithData:[img TIFFRepresentation]] autorelease];
+  sender.contentView.layer.contents = display;
 
   return frameSize;
 }
@@ -81,7 +103,6 @@ int main(int argc, const char *argv[]) {
                     defer:NO];
 
   [window setDelegate:delegate];
-  [window setBackgroundColor:NSColor.purpleColor];
   [window setTitle:@"Handmade Hero"];
   [window makeKeyAndOrderFront:nil];
 
