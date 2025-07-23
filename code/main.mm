@@ -1,4 +1,5 @@
 #include <AppKit/AppKit.h>
+#include <Foundation/Foundation.h>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -8,93 +9,100 @@
 #define local_persist static
 #define global_variable static
 
+internal bool running = true;
 global_variable uint8_t *bitmapMemory;
+global_variable int bitmapWidth = 1280;
+global_variable int bitmapHeight = 720;
 global_variable int bytesPerPixel = 4;
 
-@interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
-@end
-
-@implementation AppDelegate
-/* NSApplicationDelegate protocols */
-- (BOOL)applicationShouldTerminateAfterLastWindowClosed:
-    (NSApplication *)sender {
-  return YES;
-}
-
-- (NSApplicationTerminateReply)applicationShouldTerminate:
-    (NSApplication *)sender {
-  return NSTerminateNow;
-}
-
-/* NSWindowDelegate protocols */
-- (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
-  int initialWidth = sender.contentView.bounds.size.width;
-  int initialHeight = sender.contentView.bounds.size.height;
-  if (bitmapMemory) {
-    vm_address_t *buffer_vm_address = (vm_address_t *)&bitmapMemory;
-    vm_deallocate((vm_map_t)mach_task_self(), *buffer_vm_address,
-                  (vm_size_t)(initialWidth * initialHeight * bytesPerPixel));
-  }
-  int width = frameSize.width;
-  int height = frameSize.height;
-  int bytesPerPixel = 4;
-  // Use vm_allocate to allocate large chunks of memory instead of malloc.
-  // Allocated memory is 0 filled.
-  vm_address_t buffer_vm_address;
-  kern_return_t err = vm_allocate(
-      (vm_map_t)mach_task_self(), &buffer_vm_address,
-      (vm_size_t)(width * height * bytesPerPixel), VM_FLAGS_ANYWHERE);
-  if (err != KERN_SUCCESS) {
-    NSLog(
-        @"Encountered an error trying to allocate virtual memory for buffer.");
-  }
-  bitmapMemory = (uint8_t *)buffer_vm_address;
-
-  // fill bitmap with content
-  int pitch = width * bytesPerPixel;
+void renderWeirdGradient(int xOffset, int yOffset) {
+  int pitch = bitmapWidth * bytesPerPixel;
   uint8_t *row = bitmapMemory;
-  for (int y = 0; y < height; y++) {
+  for (int y = 0; y < bitmapHeight; y++) {
     uint8_t *pixel = (uint8_t *)row;
-    for (int x = 0; x < width; x++) {
+    for (int x = 0; x < bitmapWidth; x++) {
       // write pixel data
       *pixel = 0; // red
       pixel++;
       *pixel = (uint8_t)y; // green
       pixel++;
-      *pixel = (uint8_t)x; // blue
+      *pixel = (uint8_t)(x + xOffset); // blue
       pixel++;
       *pixel = 255; // alpha channel
       pixel++;
     }
     row += pitch;
   }
+}
 
+void redrawBuffer(NSWindow *window) {
   NSBitmapImageRep *img = [[[NSBitmapImageRep alloc]
       initWithBitmapDataPlanes:&bitmapMemory
-                    pixelsWide:width
-                    pixelsHigh:height
+                    pixelsWide:bitmapWidth
+                    pixelsHigh:bitmapHeight
                  bitsPerSample:8
                samplesPerPixel:4
                       hasAlpha:true
                       isPlanar:false
                 colorSpaceName:NSDeviceRGBColorSpace
-                   bytesPerRow:bytesPerPixel * width
+                   bytesPerRow:bytesPerPixel * bitmapWidth
                   bitsPerPixel:bytesPerPixel * 8] autorelease];
   NSImage *display =
       [[[NSImage alloc] initWithData:[img TIFFRepresentation]] autorelease];
-  sender.contentView.layer.contents = display;
+  window.contentView.layer.contents = display;
+}
+
+@interface WindowDelegate : NSObject <NSWindowDelegate>
+@end
+
+void allocateBuffer(NSWindow *window, NSSize frameSize) {
+  int initialWidth = window.contentView.bounds.size.width;
+  int initialHeight = window.contentView.bounds.size.height;
+  if (bitmapMemory) {
+    vm_address_t *buffer_vm_address = (vm_address_t *)&bitmapMemory;
+    vm_deallocate((vm_map_t)mach_task_self(), *buffer_vm_address,
+                  (vm_size_t)(initialWidth * initialHeight * bytesPerPixel));
+  }
+  bitmapWidth = frameSize.width;
+  bitmapHeight = frameSize.height;
+  int bytesPerPixel = 4;
+  // Use vm_allocate to allocate large chunks of memory instead of malloc.
+  // Allocated memory is 0 filled.
+  vm_address_t buffer_vm_address;
+  kern_return_t err =
+      vm_allocate((vm_map_t)mach_task_self(), &buffer_vm_address,
+                  (vm_size_t)(bitmapWidth * bitmapHeight * bytesPerPixel),
+                  VM_FLAGS_ANYWHERE);
+  if (err != KERN_SUCCESS) {
+    NSLog(
+        @"Encountered an error trying to allocate virtual memory for buffer.");
+  }
+  bitmapMemory = (uint8_t *)buffer_vm_address;
+}
+
+@implementation WindowDelegate
+/* NSWindowDelegate protocols */
+- (void)windowWillClose:(NSNotification *)notification {
+  running = false;
+}
+- (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
+
+  // fill bitmap with content
+  allocateBuffer(sender, frameSize);
+  renderWeirdGradient(0, 0);
+  redrawBuffer(sender);
 
   return frameSize;
 }
 @end
 
 int main(int argc, const char *argv[]) {
-  NSApplication *app = [NSApplication sharedApplication];
-  AppDelegate *delegate = [[AppDelegate alloc] init];
+  int xOffset = 0;
+  int yOffset = 0;
+  WindowDelegate *delegate = [[WindowDelegate alloc] init];
 
-  [app setDelegate:delegate];
   NSWindow *window = [[NSWindow alloc]
-      initWithContentRect:NSMakeRect(0, 0, 1280, 720)
+      initWithContentRect:NSMakeRect(0, 0, bitmapWidth, bitmapHeight)
                 styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                            NSWindowStyleMaskMiniaturizable |
                            NSWindowStyleMaskResizable |
@@ -106,6 +114,26 @@ int main(int argc, const char *argv[]) {
   [window setTitle:@"Handmade Hero"];
   [window makeKeyAndOrderFront:nil];
 
-  [app run];
+  allocateBuffer(window, NSMakeSize(bitmapWidth, bitmapHeight));
+  while (running) {
+    renderWeirdGradient(xOffset, yOffset);
+    redrawBuffer(window);
+    xOffset++;
+    yOffset++;
+
+    NSEvent *event;
+
+    do {
+      event = [NSApp nextEventMatchingMask:NSEventMaskAny
+                                 untilDate:nil
+                                    inMode:NSDefaultRunLoopMode
+                                   dequeue:YES];
+      switch ([event type]) {
+      default:
+        [NSApp sendEvent:event];
+      }
+    } while (event != nil);
+  }
+
   return 0;
 }
