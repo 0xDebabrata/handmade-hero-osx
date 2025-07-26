@@ -10,18 +10,22 @@
 #define local_persist static
 #define global_variable static
 
-internal bool running = true;
-global_variable uint8_t *bitmapMemory;
-global_variable int bitmapWidth = 1280;
-global_variable int bitmapHeight = 720;
-global_variable int bytesPerPixel = 4;
+struct offscreenBuffer {
+  uint8_t *memory;
+  int width;
+  int height;
+  int bytesPerPixel;
+};
 
-void renderWeirdGradient(int xOffset, int yOffset) {
-  int pitch = bitmapWidth * bytesPerPixel;
-  uint8_t *row = bitmapMemory;
-  for (int y = 0; y < bitmapHeight; y++) {
+global_variable bool running = true;
+global_variable offscreenBuffer globalBackBuffer;
+
+void renderWeirdGradient(offscreenBuffer buffer, int xOffset, int yOffset) {
+  int pitch = buffer.width * buffer.bytesPerPixel;
+  uint8_t *row = buffer.memory;
+  for (int y = 0; y < buffer.height; y++) {
     uint32_t *pixel = (uint32_t *)row;
-    for (int x = 0; x < bitmapWidth; x++) {
+    for (int x = 0; x < buffer.width; x++) {
       // write pixel data
       uint8_t red = 0;
       uint8_t blue = (uint8_t)(x + xOffset);
@@ -33,19 +37,19 @@ void renderWeirdGradient(int xOffset, int yOffset) {
   }
 }
 
-void redrawBuffer(NSWindow *window) {
+void redrawBuffer(NSWindow *window, offscreenBuffer buffer) {
   @autoreleasepool {
     NSBitmapImageRep *img = [[[NSBitmapImageRep alloc]
-        initWithBitmapDataPlanes:&bitmapMemory
-                      pixelsWide:bitmapWidth
-                      pixelsHigh:bitmapHeight
+        initWithBitmapDataPlanes:&buffer.memory
+                      pixelsWide:buffer.width
+                      pixelsHigh:buffer.height
                    bitsPerSample:8
                  samplesPerPixel:4
                         hasAlpha:true
                         isPlanar:false
                   colorSpaceName:NSDeviceRGBColorSpace
-                     bytesPerRow:bytesPerPixel * bitmapWidth
-                    bitsPerPixel:bytesPerPixel * 8] autorelease];
+                     bytesPerRow:buffer.bytesPerPixel * buffer.width
+                    bitsPerPixel:buffer.bytesPerPixel * 8] autorelease];
     NSImage *display =
         [[[NSImage alloc] initWithData:[img TIFFRepresentation]] autorelease];
     window.contentView.layer.contents = display;
@@ -55,29 +59,30 @@ void redrawBuffer(NSWindow *window) {
 @interface WindowDelegate : NSObject <NSWindowDelegate>
 @end
 
-void allocateBuffer(NSWindow *window, NSSize frameSize) {
+void allocateBuffer(NSWindow *window, NSSize frameSize,
+                    offscreenBuffer *buffer) {
   int initialWidth = window.contentView.bounds.size.width;
   int initialHeight = window.contentView.bounds.size.height;
-  if (bitmapMemory) {
-    vm_address_t *buffer_vm_address = (vm_address_t *)&bitmapMemory;
-    vm_deallocate((vm_map_t)mach_task_self(), *buffer_vm_address,
-                  (vm_size_t)(initialWidth * initialHeight * bytesPerPixel));
+  if (buffer->memory) {
+    vm_address_t *buffer_vm_address = (vm_address_t *)&buffer->memory;
+    vm_deallocate(
+        (vm_map_t)mach_task_self(), *buffer_vm_address,
+        (vm_size_t)(initialWidth * initialHeight * buffer->bytesPerPixel));
   }
-  bitmapWidth = frameSize.width;
-  bitmapHeight = frameSize.height;
-  int bytesPerPixel = 4;
+  buffer->width = frameSize.width;
+  buffer->height = frameSize.height;
   // Use vm_allocate to allocate large chunks of memory instead of malloc.
   // Allocated memory is 0 filled.
   vm_address_t buffer_vm_address;
-  kern_return_t err =
-      vm_allocate((vm_map_t)mach_task_self(), &buffer_vm_address,
-                  (vm_size_t)(bitmapWidth * bitmapHeight * bytesPerPixel),
-                  VM_FLAGS_ANYWHERE);
+  kern_return_t err = vm_allocate(
+      (vm_map_t)mach_task_self(), &buffer_vm_address,
+      (vm_size_t)(buffer->width * buffer->height * buffer->bytesPerPixel),
+      VM_FLAGS_ANYWHERE);
   if (err != KERN_SUCCESS) {
     NSLog(
         @"Encountered an error trying to allocate virtual memory for buffer.");
   }
-  bitmapMemory = (uint8_t *)buffer_vm_address;
+  buffer->memory = (uint8_t *)buffer_vm_address;
 }
 
 @implementation WindowDelegate
@@ -87,9 +92,9 @@ void allocateBuffer(NSWindow *window, NSSize frameSize) {
 }
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
   // fill bitmap with content
-  allocateBuffer(sender, frameSize);
-  renderWeirdGradient(0, 0);
-  redrawBuffer(sender);
+  allocateBuffer(sender, frameSize, &globalBackBuffer);
+  renderWeirdGradient(globalBackBuffer, 0, 0);
+  redrawBuffer(sender, globalBackBuffer);
 
   return frameSize;
 }
@@ -98,10 +103,14 @@ void allocateBuffer(NSWindow *window, NSSize frameSize) {
 int main(int argc, const char *argv[]) {
   int xOffset = 0;
   int yOffset = 0;
+  globalBackBuffer.width = 1280;
+  globalBackBuffer.height = 720;
+  globalBackBuffer.bytesPerPixel = 4;
   WindowDelegate *delegate = [[WindowDelegate alloc] init];
 
   NSWindow *window = [[NSWindow alloc]
-      initWithContentRect:NSMakeRect(0, 0, bitmapWidth, bitmapHeight)
+      initWithContentRect:NSMakeRect(0, 0, globalBackBuffer.width,
+                                     globalBackBuffer.height)
                 styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                            NSWindowStyleMaskMiniaturizable |
                            NSWindowStyleMaskResizable |
@@ -113,10 +122,13 @@ int main(int argc, const char *argv[]) {
   [window setTitle:@"Handmade Hero"];
   [window makeKeyAndOrderFront:nil];
 
-  allocateBuffer(window, NSMakeSize(bitmapWidth, bitmapHeight));
+  allocateBuffer(window,
+                 NSMakeSize(globalBackBuffer.width, globalBackBuffer.height),
+                 &globalBackBuffer);
+
   while (running) {
-    renderWeirdGradient(xOffset, yOffset);
-    redrawBuffer(window);
+    renderWeirdGradient(globalBackBuffer, xOffset, yOffset);
+    redrawBuffer(window, globalBackBuffer);
     xOffset++;
     yOffset++;
 
