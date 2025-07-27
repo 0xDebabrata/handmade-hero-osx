@@ -92,7 +92,6 @@ void allocateBuffer(NSWindow *window, NSSize frameSize,
 }
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize {
   // fill bitmap with content
-  allocateBuffer(sender, frameSize, &globalBackBuffer);
   renderWeirdGradient(globalBackBuffer, 0, 0);
   redrawBuffer(sender, globalBackBuffer);
 
