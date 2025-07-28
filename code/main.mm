@@ -1,5 +1,6 @@
 #include <AppKit/AppKit.h>
 #include <Foundation/Foundation.h>
+#include <GameController/GCController.h>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -141,6 +142,10 @@ int main(int argc, const char *argv[]) {
       switch ([event type]) {
       default:
         [NSApp sendEvent:event];
+
+        // list game controllers
+        NSArray<GCController *> *controllers = [GCController controllers];
+        NSLog(@"No of controllers: %lu", [controllers count]);
       }
     } while (event != nil);
   }
